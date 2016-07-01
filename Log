@@ -1,0 +1,23 @@
+#[INFO]Data added to CSV
+![WARN]Long digits like IDs truncated
+#[INFO]Data reconverted to CSV, this time with Open Office
+![WARN]Data summary shows mark-type values scrambled
+#[INFO]Data reconverted to tab delimited file. Success!
+#[INFO]Boxplots plotted per city and state show multiple values. Cleaning of these two columns required.
+#[INFO]Library 'psych' needed to easliy access summaries per category
+![FORK]Cleaning rows for only those cities where unauthorized usage have been historically high and separating them for analysis (1.0)
+![WARN]Time read as char, converted to time format
+#[INFO]Packages needed to plot per mark-type across other categories like city or hour-of-day
+![FORK]To first visualize the dataset from FORK 1 (may be build dashboards with Google charts, rcharts, plotly & Shiny by RStudio??)
+#[INFO]Charts shortlisted: coxcomb, sunburst, windrose & treemap
+#[INFO]Hit a wall with the visualizations; almost all AMOUNT values are integers with nearly no floating values. 
+#[INFO]ggplotly() viable for easy customization with good plot interactivity.
+#[INFO]RMarkdowns with shiny work only inside of RStudio (at least, for now). Cannot share these markdowns freely.
+#[INFO]ggplot() info: once dataframe is set in ggplot(data=''..) not necessary to set datafame again in x,y axes (like df$var1...)
+#[INFO]ggplot() info: For the 'no layers' error, be sure to add geom_...()
+#[INFO]ggvis()!=googleVis()
+#[INFO]rCharts() also viable, to be explored subsequently.	
+#[INFO]Successfully sorted bin by count and plotted treemap. Interactive treemaps to be found
+#[NOTE]Treemaps describe hierarchical data. Will use a word cloud or a circular bar plot.
+#[INFO]Wordclouds are tough to crack as of now and circular bar plots are a bad idea. Reverting to treemaps.
+#[INFO]Finally ready, with themes and one embedded ggplotly() graph. 
