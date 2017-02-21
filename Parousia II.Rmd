@@ -1,0 +1,233 @@
+d---
+title: "Credit Cards at ATMS: Redux"
+author: Vijay Somanath Ganesh
+output: 
+  flexdashboard::flex_dashboard:
+  theme: readable
+  source: embed
+---
+  
+```{r setup, include=FALSE}
+library(flexdashboard)
+```
+Analysis {.storyboard}
+=========================================
+### This is, partly, a continuation to the exploratory study done earlier on ATM transactions on credit cards.
+
+```{r}
+library(plotly)
+library(plyr)
+#require(shiny)
+require(lubridate)
+#require(treemap)
+require(ggplot2)
+vis1=read.delim(file='C:\\Users\\v7184\\Documents\\R-wd\\CC ATM 1.2.txt',header=TRUE,sep='\t')
+attach(vis1)
+#datime=dmy_hms(paste(vis1, time),tz="Asia/Kolkata")
+
+d2=(subset(vis1,trancode<16))
+datime=dmy_hms(paste(d2$date, d2$time),tz="Asia/Kolkata")
+p1=ggplot(data=d2, aes(x=datime,y=amount),environment = environment()) +geom_point(color='Blue')+ggtitle("Transaction spread over time - Genuine")+xlab("Time")+ylab("Amount")
+p1
+
+```
+
+***
+<font face="Calibri;Candara;Arial" size="4">
+<b>Major Findings of the first study: </b><br>
+  
+- A surprisingly high number of genuine ATM withdrawals occur on credit cards.
+
+- Even more curiously, these transactions happen at just about all hours of the day, including the odd hours between 10:00 PM to 6:00 AM.
+
+- Genuine transactions of this kind vastly outnumber counterfeit ones.
+
+- ATM transactions are more common on certain credit BINs than others.
+</font>
+
+
+### Picking up from where we left off the last time, this is an exploratory study on all such cards with ATM transactions during odd hours.
+
+```{r}
+library(DT)
+vis2=read.csv("vis2.csv",header=TRUE)
+datatable(vis2)
+#datatable(iris)
+```
+
+***
+  
+<font face="Calibri;Candara;Arial" size="4">
+<b>Methodology of this study: </b><br>
+  
+- All cards whitelisted for the rule that alerts odd-hour transactions were extracted.
+
+- For comparison, cards suspected to have been compromised that were added to a POC list were also extracted (a total of 64800+ cards).
+
+- 65 cards on the POC list, i.e., 65 'at-risk' cards have been whitelisted for the odd-hour rule because the cardholders have withdrawn cash after 11:30 PM.
+
+- This is the fact that prompted an analysis into those cards with ATM withdrawals at night.
+
+
+### Like the first study showed, credit cards have ATM transactions in large numbers.
+
+```{r}
+
+vis3=read.csv("vis3.csv",header=TRUE)
+datatable(vis3)
+```
+
+***
+  
+<font face="Calibri;Candara;Arial" size="4">
+<b>Not a rare event: </b><br>
+  
+- This table shows the total number of domestic ATM withdrawals on both portfolios for a period of ninety days, as on 5-Jul-16.
+
+- Though debit transactions outnumber those on credit cards, the credit card transactions are not insignificant.
+
+</font>
+
+### Drilling down into the types of cards, it is evident that certain types of cards in either portfolio have more ATM transactions during odd hours.
+
+```{r}
+
+d=read.csv("overview.csv",header=TRUE)
+attach(d)
+y=count(d,c("PRM_Whitelist","Portfolio","Segment"))
+p=plot_ly(y,x=Segment,y=freq,type='bar',color = Portfolio,colors="Accent",
+          hoverinfo="text", text=c(paste("Portfolio:", Portfolio, "<br>Segment:", Segment, "<br>Value:", signif(freq, digits=3))))
+p
+```
+
+***
+  
+<font face="Calibri;Candara;Arial" size="4">
+<b>Differences in products: </b><br>
+  
+- In debit cards, the BIN <code> Platinum Black </code> has the highest number of whitelistings.
+
+- In credit cards, the <code>Commercial</code> segment has the highest number of whitelistings.
+
+- This data is for FY 2016-17, till 10-Jun-16.
+
+
+<br><br><br><br><br><br><br><br><br><br><br>
+<hr size="10" noshade>
+<span style="color:grey; font-size: 9pt"><i> This graph is interactive; move your mouse pointer over the points on the graph for more information. Click on the legend to compare values.</span>
+
+
+### Cardholders of a certain age tend to get whitelisted for this rule a lot. This slide gives the information for credit cards.
+
+```{r}
+
+d=read.csv("ccage.csv",header=TRUE)
+attach(d)
+y=count(d,c("identifier","age"))
+p=plot_ly(y,x=age,y=freq,type='bar',color=age,colors="Set1",
+          hoverinfo="text", text=c(paste("Age:",age, "<br>Count:", signif(freq, digits=3))))
+p
+```
+
+***
+
+<font face="Calibri;Candara;Arial" size="4">
+<b>Influence of Demographics: </b><br>
+
+- It was observed that cardholders who are 36 years old have the most number of whitelistings done.
+
+- ALL of them have the DOB as 1-Jan-1980, the default date taken in by computer systems when no date is specified. Closer analysis shows they are all corporate cards, some cards with no actual custIDs.
+
+- Even adjusting for this deviance, it is observed that customers in their mid-30s tend to get whitelisted for this rule. Whether there is any actual correlation needs to be studied by other means, such as primary research.
+
+- Some credit cards did not have DOB information, as is evident from the graph.
+
+- Very few debit cards have any DOB information available.
+
+- Let us restrict all future slides to credit cards.
+
+</font>
+<br><br><br><br><br><br><br><br><br><br><br>
+<hr size="10" noshade>
+<span style="color:grey; font-size: 9pt"><i> This graph is interactive; move your mouse pointer over the points on the graph for more information. Click on the legend to compare values.</span>
+
+### Credit cards: Does occupation play a role in cash requirement?
+
+```{r}
+occ=read.csv("ccfork.csv",header=TRUE)
+attach(occ)
+y=count(occ,c("identifier","emp.type"))
+p=plot_ly(y,x=emp.type,y=freq,type='bar',color=emp.type,colors="Set1",
+          hoverinfo="text", text=c(paste("Employment type:",emp.type,"<br>Count:", signif(freq, digits=3))))
+p
+```
+
+***
+<font face="Calibri;Candara;Arial" size="4">
+<b>Occupation: </b><br>
+
+- The EDW <code>HDFC_EDW_DSE.ADMIN.FCT_FW_CI_CUSTOMER_AML_DTLS</code> has additional details on the customer, such as occupation details, type of employer, salary range etc.
+
+- Many fields are blank for many customers, and it is not known as to how current or updated this information is.
+
+- Assuming it is current, this graph shows the number of whitelists done on credit cardholders by their employment type.
+
+- Counter-intuitively, the <code>Salaried</code> class outnumber the rest of the classes in this phenomenon. (<b>Note:</b> This graph ignores records for which the details are unavailable. If all relevant details are available & included, this graph may change.)</font>
+
+### Credit cards: The salary range of whitelisted customers
+
+```{r}
+occ=read.csv("ccfork.csv",header=TRUE)
+attach(occ)
+y=count(occ,c("identifier","income.range"))
+p=plot_ly(y,x=income.range,y=freq,type='bar',color=income.range,colors="Set1",
+          hoverinfo="text", text=c(paste("Income range:",income.range,"<br>Count:", signif(freq, digits=3))))
+p
+occ1=subset(occ,(income.range=="1,00,000 - 3,00,000"))
+
+```
+
+
+***
+<font face="Calibri;Candara;Arial" size="4">
+<b>Income Range: </b><br>
+
+- Here, the graph is fairly straightforward: those in the lower-income groups get cash at nights (the assumption here is that the income range is for the yearly income).
+
+- A significant number of records do not have this information (<code>NULL</code>).</font>
+
+
+
+### Credit cards: The salary range of whitelisted customers
+```{r}
+y1=count(occ1,c("identifier","seg","income.range"))
+p1=plot_ly(y1,x=income.range,y=freq,type='bar',color=seg,colors="Set1",
+          hoverinfo="text", text=c(paste("Income range:",income.range,"<br>Count:", signif(freq, digits=3))))
+p1
+```
+
+***
+<font face="Calibri;Candara;Arial" size="4">
+<b>Income Range: </b><br>
+- The income range <code>1,00,000 - 3,00,000</code> has a large number of <code>Commercial</code> cards. Whether this is of any significance needs to studied.</font>
+
+### Recommendations
+```{r}
+
+reco=read.delim('reco.txt',header=TRUE,sep='\t')
+
+datatable(reco)
+```
+
+***
+<font face="Calibri;Candara;Arial" size="4">
+<b>Recommendations: </b><br>
+
+- A few possible recommendations from the inferences so far.
+
+- While the credit card ATM transactions are significant in number, the overall fraud on ATM transactions is quite less in comparison (In the entire FY 2015-16, only 184 confirmed domestic ATM fraud cases were reported.)
+
+
+This was an exploratory study to understand the continuing trend of high volume ATM withdrawals on credit cards. It must be noted that the inferences and recommendations are based on available data; the inferences may change in the presence of new data.
+
+Kindly share your thoughts/ideas.</font>
