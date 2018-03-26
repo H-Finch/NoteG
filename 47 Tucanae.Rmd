@@ -1,0 +1,123 @@
+---
+title: "Clusters & Customers"
+subtitle: "An exercise in Customer Profiling"
+author: "Vijay Somanath Ganesh"
+date: "10 February 2017"
+output: 
+  html_document:
+    css: style.css
+---
+
+In our last study of credit card transactions at domestic ATMs, we saw the different types of customers that make withdrawals at night. 
+This is an exercise in exploring the associations between demographic details of these customers and making ATM withdrawals at night.
+
+##What are we going to do?
+
+The idea is to get a picture of the type of customers that exhibit this behavior of withdrawing from ATMs at night.
+
+But to do this, we need to know <b><i>in what way</i></b> we will describe the customers.
+<br>So let's choose variables that are as descriptive as possible.
+
+##How are we going to do it?
+
+All ATM transactions between 11 PM & 12 AM from 8-Oct-16 till 7-Nov-16 were extracted (just before demonetization).
+Analysis was restricted to credit cards, because:
+
+* Data availability for debit cards in data marts & data stores leaves a lot to be desired.
+* ATM withdrawals, that too at night, from credit cards are relatively more intriguing.
+	
+The final base for analysis contained 1549 rows.
+
+The EDW <code><font color="red">HDFC_EDW_DSE.ADMIN.FCT_FW_CI_CUSTOMER_AML_DTLS</font></code> has additional details on the customer, such as occupation details, type of employer, salary range & risk profile etc.
+
+Our variables of interest are:
+
+* Age of the customer (calculated from the date of birth)
+* Occupation Type (_Salaried, Self-Employed, Farmer, Housewife, Student, Retired, Others_)
+* Employer Type (_Government, Multinational, Partnership, Private Limited, Proprietership, Public Limited, PSUs, Not Applicable, Others_)
+* Salary Range (_8 distinct levels, from 0 upto 15,00,000_)
+* Risk Profiles (_LOW, MEDIUM, HIGH_)
+* Count of ATM withdrawals 
+* Amount of ATM withdrawals
+
+The last two variables were calculated from the transaction base.
+
+##So what does the data look like?
+
+Since these are credit cards, most of them are classified as _LOW RISK_.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE,plotly=TRUE,cache=FALSE,results='markup', fig.align='center'}
+library(ggplot2)
+dat = data.frame(
+  risk = factor(c("Low","Medium","High"), levels=c("Low","Medium","High")),
+ count = c(1452,64,33))
+ggplot(dat,aes(x=reorder(risk,-count),y=count))+geom_bar(stat='identity') +
+ ggtitle("Risk Profiles in the data")+xlab("Risk Profile")+guides(fill=FALSE)
+```
+
+Most customers are aged between 23 to 30.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE,plotly=TRUE,cache=FALSE,results='markup', fig.align='center'}
+library(ggplot2)
+dat = read.csv("agefreq.csv",header=T)
+ggplot(dat,aes(x=age,y=freq))+geom_line()+geom_point()+ylab("count")+ggtitle("Count of customers by age")
+```
+
+##Clustering the Customers
+
+Clustering is a data-mining technique that groups data-points by similarity.
+
+After choosing the appropriate number of clusters and the actual clustering algorithm, the clusters are formed.
+
+<br>
+<center><img src="C:\Users\v7184\Documents\R-wd\clusters.png"></center>
+<center><b>Clusters. The numbers in the plot correspond to the row number in the actual dataset.</b></center>
+<br>
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE,plotly=TRUE,cache=FALSE,results='markup', fig.align='center'}
+library(ggplot2)
+dat = data.frame(
+  Cluster = factor(c("1","2","3"), levels=c("1","2","3")),
+ count = c(349,262,938))
+ggplot(dat,aes(x=reorder(Cluster,count),y=count))+geom_bar(stat='identity') +
+ ggtitle("No. of customers per cluster")+xlab("Cluster")+guides(fill=FALSE)
+```
+
+After correcting and regrouping the clusters, the following aspects of the clusters become apparent.
+
+<blockquote style="background-color: #faebbc">
+Cluster 1 consists of _only_ low risk, typically less than 25 years, students, 
+with no information on employer available (obviously). These customers earn nothing.
+Usually transact just once, very less amounts typically 10k or less.
+</blockquote>
+
+<blockquote style="background-color: #faebbc">
+Cluster 2 is the least voluminous, mostly low risk, mostly between 23-50,
+mostly self-employed, with no information on employer available.
+Earning anywhere between 10L to 75L.
+Usually transact just once,very less amounts typically 10k or less.
+</blockquote>
+
+<blockquote style="background-color: #faebbc">
+Cluster 3-most voluminous, mostly low risk, mostly between 25-40,
+ONLY salaried (this cluster has the most number of salaried people), mostly in Private or PSU companies.Mostly earning between 10-50L.
+Usually transact just once, for very less amounts typically 10k or less.
+</blockquote>
+
+##Making Sense of the results
+
+The following points are clear from the results:
+
+* As the customers are mostly between 23-30, this is a strong link across the clusters. 
+* All the customers have transactions just one day in the window 8-Oct-16 to 7-Nov-16 (though they may transact more than once on that day.)
+* Most transactions are for low denominations, usually not more than 10k.
+
+###So can we say that a salaried 30-year-old individual will definitely make credit cards ATM withdrawals at night?
+
+<b>NO</b>. What this set of clusters means is that, for a given credit card ATM withdrawal at night, it is likely that the individual is a 30-year-old salaried individual. 
+
+##What else is possible?
+
+The conclusions above are based on the data gathered for one month. They may differ if new data is added.
+
+Also, events like demonetization can skew the results of this exercise.

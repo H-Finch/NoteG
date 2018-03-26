@@ -1,0 +1,129 @@
+---
+title: Predicting POS Frauds
+author: Vijay Somanath Ganesh
+output: 
+  html_document:
+    css: style.css
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    collapsed: false
+    smooth_scroll: true
+---
+
+In the last report, we saw an application of statistical & data-mining techniques to predict fraudulent ATM transactions from India.
+Let's apply those techniques to the domestic POS front now.
+
+##Methodology
+
+Cards with domestic POS disputes between 23-Nov-16 & 24-Feb-17 were retrieved. This period was chosen to be able to retrieve the transactions from these cards.
+
+The training data was prepared by creating a base of all domestic transactions on these cards. 
+
+Many cards in the dataset have no fraudulent attempts. This is to train the model to better identify genuine transactions.
+
+###Variable Selection
+
+The final dataset for model-building was created with a few fields of interest and a few others that were derived for the purpose of modeling. 
+
+
+```{r echo=FALSE,message=FALSE, warning=FALSE}
+library(DT)
+vis1=read.csv("cinq-var.csv",header=T)
+datatable(vis1,options = list(pageLength = 18))
+```
+
+The model-building will happen only with the variables <code>tod, amt, resp, txn, mcc, mccnt, mean, number, prev, run</code>.
+
+The final dataset has 4194 records.
+
+###Calculated Fields
+
+For ATM transactions, it was found that **average disputed transactions on a card tend to be higher than the average ATM spends on that card**.
+
+Supposing the same logic holds true for POS transactions, <code>mean</code> is calculated as:
+
+\[
+mean_{ij} = \frac{\sum_{i=1}^{n}\sum_{j=1}^{n}amt_{ij}}{n}
+\]
+
+\[
+mean_{ij} = \textrm{Average for card 'i' at MCC 'j'}
+\]
+
+\[
+amt_{ij} = \textrm{Amount for card 'i' at MCC 'j'}
+\]
+
+###Grouping MCCs
+
+There are more than 800 MCC classifications, many of which are quite similar. Since 800 different values would introduce too much granularity in the models, the MCCs were all grouped under one of the following groups. 
+The table gives the name of each group and the total number of MCCs in that group.
+
+```{r echo=FALSE,message=FALSE, warning=FALSE}
+library(DT)
+vis2=read.csv("mccgrp.csv",header=T)
+datatable(vis1,options = list(pageLength = 18))
+```
+
+This is just one way of handling this scenario.
+
+##Data Exploration
+
+Let's have a look at transaction patterns and how the data looks like overall.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE,plotly=TRUE,cache=FALSE,results='markup',fig.width=10,fig.height=11}
+data=read.delim("cinq.txt",header=T,sep='\t')
+data$tod=factor(data$tod)
+data$dv=factor(data$dv)
+data$txn=factor(data$txn)
+data$resp=factor(data$resp)
+data$mcc=factor(data$mcc)
+mode = function(v) {
+  uniqv = unique(v)
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+library(plyr)
+library(ggplot2)
+library(ggrepel)
+library(caret) 
+library(plyr) 
+#library(Hmisc) 
+library(pROC) 
+library(DMwR) 
+#library(missForest) 
+#library(mi) 
+#library(mice) 
+#library(car) 
+#library(xgboost) 
+library(Amelia) 
+library(ROCR) 
+library(unbalanced) 
+library(plotly)
+library(InformationValue)
+library(car)
+library(reshape2)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(plotmo)
+library(ModelGood)
+library(d3heatmap)
+library(ggthemes)
+library(rpivotTable)
+#library(lubridate)
+
+d1=subset(data,(amt<300000))
+dg=(subset(data,fraud=="G"&amt<=300000))
+df=(subset(data,fraud=="F"))
+ggplot(d1,aes(x=factor(dv),y=amt))+ geom_boxplot()+scale_x_discrete(name ="Transaction Type",labels=c("0" = "Genuine", "1" = "Fraudulent"))+ggtitle("Distribution of transactions by mark")
+ggplot(dg,aes(x=factor(txn),y=amt))+ geom_boxplot()+xlab("Transaction Type")+ylab("Amount")+ggtitle("Distribution of transactions by type")+ scale_x_discrete(breaks=c("1","2","3","4","5","6"),labels=c("CHIP+PIN","CHIP","MAGSTRIPE+PIN","MAGSTRIPE","FALLBACK+PIN","FALLBACK") )
+txnc=count(data,c("txn","fraud"))
+ggplot(txnc,aes(x=factor(txn), y=freq, fill=fraud)) +xlab("Transaction Type")+ylab("Count")+
+  geom_bar(stat="identity", position=position_dodge())+scale_x_discrete(breaks=c("1","2","3","4","5","6"),labels=c("CHIP+PIN","CHIP","MAGSTRIPE+PIN","MAGSTRIPE","FALLBACK+PIN","FALLBACK") )+geom_text_repel(aes(label=freq))
+
+
+
+```
+

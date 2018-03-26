@@ -1,0 +1,367 @@
+---
+title: Predicting Fraudulent Transactions
+author: Vijay Somanath Ganesh
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    collapsed: false
+    smooth_scroll: true
+---
+
+Transactions at domestic ATMs that are disputed/fraudulent have been a challenge in terms of proactive alerting or declining, simply because of the sheer volume of genuine transactions that outnumber the fraudulent ones.
+
+While many rules are in place to address this problem, the primary challenge morphs from reducing fraud to reducing impact on genuine customers due to said rules. 
+
+So perhaps, another way to flag suspicious domestic ATM transactions?
+
+##The Case for Statistical Intervention
+
+Given the abundance of transactional data, fraud is the proverbial needle in the haystack. An effective rule has to consider the entire set of data-points to arrive at a conclusion as to the outcome. It is here that statistical models, trained on past data, perform at least marginally better, even if not exceptionally well.
+
+###So What is a Statistical Model?
+
+A statistical model is a mathematical construct that 'observes' a set of data-points (called _training data_), calculates the relationships between the variables in the data and establishes a logic as to how the variables behave. This logic is used to 'predict' how new data will behave. Some points to note here:
+
+* The logic the model builds is dependent on the technique used. As always, there are numerous techniques available to solve any one problem, each with its own merits & demerits.
+
+* Models are always built for a particular problem at hand. No model can be a 'one-stop' solution for all variations of a problem. 
+
+And lastly, the most important point:
+ 
+* Each model is built on a set of assumptions. Hence, it will fail inevitably if the assumptions no longer hold.
+
+Let's now look at how this new approach measures up in addressing domestic ATM misuse.
+
+##Methodology
+
+All cards with domestic ATM disputes for the months of September, October & November were considered. The training data was prepared by creating a base of all domestic ATM transactions on these cards. 
+
+Many cards in the dataset have no fraudulent attempts. This is to train the model to better identify genuine transactions.
+
+###Variable Selection
+
+The final dataset for model-building was created with a few fields of interest (we shall call these fields _variables_ henceforth) and a few others that were derived for the purpose of modeling. 
+
+
+```{r echo=FALSE,message=FALSE, warning=FALSE}
+library(DT)
+vis1=read.csv("variable.csv",header=T)
+datatable(vis1,options = list(pageLength = 18))
+```
+
+The variable <code>mark</code> has been replicated in <code>dv</code> since the models we are about to see can take only numerical values. For this reason, the model-building will happen only with the variables <code>timeofday, prev, dv, amount, avg1, avg2</code>.
+
+The final dataset has 6890 records.
+
+###Calculated Fields
+
+The variables <code>avg1</code> & <code>avg2</code> were calculated after a study showed that **average disputed transactions on a card tend to be higher than the average ATM spends on that card**.
+
+<code>avg1</code> is calculated as follows:
+
+\[
+avg1 = \left(\frac{|X_i-{\overline{X}}|}{\overline{X}}\right) * 100
+\]
+
+\[
+X_i = \textrm{Incoming transaction's amount}
+\]
+\[
+\overline{X} = \textrm{Average of all genuine ATM transactions so far}
+\]
+
+<code>avg2</code> is calculated as follows:
+
+\[
+avg2 = \left(\frac{|X_i-{\overline{X}}|}{2\overline{X}}\right) * 100
+\]
+
+Some card accounts did not have any previous ATM transaction, which meant $\overline{X}$ will be zero, resulting in a <code>Divide by zero</code> error. This was handled by filling up the values of <code>avg1</code> and <code>avg2</code> for such cases with randomly generated very high values, since such a transaction will be anomalous. This is just one way of handling this scenario.
+
+##Data Exploration
+
+Let's have a look at transaction patterns and how the data looks like overall.
+
+####Distribution of transactions
+
+It is common knowledge that genuine transactions are more likely during mornings & evenings.
+This is clearly reflected in the below plot. However, the transaction count seems to spike after 5 PM.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE,plotly=TRUE,cache=FALSE,results='markup',fig.width=10,fig.height=11}
+
+data=read.delim("DTREE.txt",header=T,sep='\t')
+attach(data)
+data$avg1=avg1*100
+data$avg2=avg2*100
+data$timeofday=factor(data$timeofday)
+data$prev=factor(data$prev)
+data$dv=factor(data$dv)
+mode = function(v) {
+  uniqv = unique(v)
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+library(dplyr)
+library(ggthemes)
+library(plyr)
+library(ggplot2)
+library(ggrepel)
+library(lubridate)
+require(caret) 
+require(plyr) 
+#require(Hmisc) 
+require(pROC) 
+#require(DMwR) 
+#require(missForest) 
+#require(mi) 
+#require(mice) 
+#require(car) 
+#require(xgboost) 
+require(Amelia) 
+require(ROCR) 
+#require(unbalanced) 
+library(plotly)
+library(InformationValue)
+library(car)
+#library(reshape2)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(plotmo)
+library(ModelGood)
+library(d3heatmap)
+
+datime=dmy_hms(paste(date, time),tz="Asia/Kolkata")
+dg=(subset(data,mark=="Genuine"))
+#p1=ggplot(data,aes(x=factor(dv),y=amount))+ geom_boxplot()+scale_x_discrete(name ="Transaction Type",labels=c("0" = "Genuine", "1" = "Fraudulent"))+ggtitle("Distribution of transactions by type")
+#ggplotly(p1)
+t1=ggplot(dg,aes(x=factor(hour),fill=factor(timeofday)))+geom_bar()+ coord_polar()+ theme_hc() + scale_colour_hc()+geom_text_repel(stat="Count",aes(label=..count..))+ggtitle("Distribution of transactions by time of day - Genuine")
+t1+ scale_fill_discrete("Time of Day",breaks=c("1","2","3"),labels=c("Morning","Evening","Night") )+ylab("Count")+xlab("Hour")
+
+```
+
+Likewise, fraudulent transactions outnumber genuine ones during night, despite the fact a good number of cards have genuine transactions at night.
+```{r, echo=FALSE, message=FALSE, warning=FALSE,plotly=TRUE,cache=FALSE,results='markup',fig.width=10,fig.height=11}
+df=(subset(data,mark=="Fraud"))
+t2=ggplot(df,aes(x=factor(hour),fill=factor(timeofday)))+geom_bar() + coord_polar()+ theme_hc() + scale_colour_hc()+ geom_text_repel(stat="Count",aes(label=..count..))+ggtitle("Distribution of transactions by time of day - Fraud")+ 
+  scale_fill_discrete("Time of Day",breaks=c("1","2","3"),labels=c("Morning","Evening","Night") )+ylab("Count")+xlab("Hour")
+t2
+```
+
+That genuine transactions vastly outnumber fraudulent transactions is very apparent from the next graph.
+```{r, echo=FALSE, message=FALSE, warning=FALSE,plotly=TRUE,cache=FALSE,results='markup',fig.width=10,fig.height=11}
+t3=ggplot(data,aes(x=factor(dv),fill=factor(dv)))+geom_bar()+ coord_polar()+ggtitle("Number of transactions by type")
+t3+scale_fill_discrete("Type",breaks=c("0","1"),labels=c("Genuine","Fraudulent"))+xlab("Transaction")
+```
+
+##Model-Building
+
+One conventional method of model-building is to split the total data into two datasets, _training data_ and _test data_. The model is applied first to the training data, where it 'learns' the relationships between variables and formulates a logic. This logic is then applied to the test data and the performance of the model is measured.
+This is the same method that has been followed for this analysis. The total data is split 75:25 as training & test data (5167 transactions in training data and 1723 rows in test data).
+
+###Problem Formulation
+
+The problem statement we have taken up is: **_"Given a domestic ATM transaction with information about prior usage at the terminal along with how it impacts the average amount, how likely is it to be fraudulent?"_**
+
+Now, any transaction, as far as we are concerned, is either genuine or fraudulent, reducing the possibility to one of two binary states. 
+This makes the above problem statement an exercise in **binary classification**.
+
+There are numerous techniques & algorithms that can be used to perform binary classification, but the analysis is restricted to the following three methods.
+
+* Logistic Regression
+* Decision-Tree
+* Random Forest
+
+Only elementary modeling has been done; more advanced fine-tuning/error-checking have been left out in the interest of time. 
+
+###Logistic Regression
+
+Regression is a technique that allows us to predict an output based on some inputs. 
+Logistic regression is regression done on an outcome that has states or categories, like "will rain/will not rain", "will default/will not default", and of course, "fraud/not fraud".
+
+Simply put, for any instance, logistic regression will use the variables provided and formulate a logic to classify the instance as one of the two states. Logistic regression is one of the simplest and most popular models for binary classification. 
+
+Six different models were built by including/excluding variables.
+```{r echo=FALSE,message=FALSE, warning=FALSE}
+library(DT)
+vis2=read.delim("logit.txt",sep='\t',header=T)
+datatable(vis2,options = list(pageLength = 18))
+```
+
+**So how effective were the models in predicting fraud?**
+
+There are many metrics to measure the effectiveness of a logistic regression model. One of them is the _ROC Curve_, that represents graphically how well the model handled classification & misclassification.
+
+In simple terms, the closer the ROC curve is to the top left corner, the better the model.
+(Model performance metrics have been discussed in a separate section in detail.)
+
+
+
+<img src="C:\Users\v7184\Documents\R-wd\logit_ROC.png">
+
+Almost all the models have similar effectiveness on the training data. (However, Model 5 is marginally under-performing.) At this point, when it is clear that adding/removing variables is not going to improve model performance, the model is said to be 'saturated'.
+
+###Decision-Tree
+
+Decision trees are a decision-making support tool that creates a model that predicts the value of a target variable based on several input variables. 
+
+A decision-tree starts with one variable, which is usually the variable that best explains the variance in the data, and 'splits' the data, checking for new conditions at each stage till it has classified all data points.
+
+For example, the following decision-tree is a simple implementation of this technique to determine a car's mileage.
+
+<img src="C:\Users\v7184\Documents\R-wd\dtree-example2.png">
+
+The primary advantage of a decision-tree is the visual representation of the entire model.
+
+Applying the model to our training data, following is the output.
+
+<img src="C:\Users\v7184\Documents\R-wd\dtree.png">
+
+The blue nodes classify outcome 'Fraud' and the green nodes denote outcome 'Not Fraud'. The model seems to be able to classify 'Fraud' easily, with lesser splits and seems to check multiple conditions to verify genuine transactions.
+
+The model also returns the significance of each variable while building the model.
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, plotly=TRUE,cache=FALSE,results='markup'}
+dat = data.frame(
+  variable = factor(c("amount","avg1","avg2","prev","timeofday"), levels=c("amount","avg1","avg2","prev","timeofday")),
+ significance = c(543.2138,775.7442,764.3141,520.5548,607.2016))
+ggplot(dat,aes(x=reorder(variable,-significance),y=significance,fill=variable))+geom_bar(stat='identity') +
+  coord_flip()+ggtitle("Decision-tree: Variable importance")+xlab("variable")+guides(fill=FALSE)
+```
+
+<code>avg1</code> is the most significant variable; interestingly, <code>prev</code> is the least important variable to build the model. Also, <code>prev</code> does not seem to be a major factor in deciding likelihood of fraud.
+
+Model performance metrics have been discussed in a separate section in detail.
+
+###Random Forests
+
+A random forest is a collection of decision-trees that is built as a single model. It constructs a multitude of decision trees at training time and outputs the class that is the most common for all trees at that iteration.
+
+In other words, a random forest is the aggregation of numerous decision-trees.
+
+For this analysis, all variables were considered to build the random forest and the number of trees was set at 500.
+
+The variable importance agrees with that of the decision-tree, for the most part.
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, plotly=TRUE,cache=FALSE,results='markup'}
+dat = data.frame(
+  variable = factor(c("amount","avg1","avg2","prev","timeofday"), levels=c("amount","avg1","avg2","prev","timeofday")),
+ significance = c(131.0970,597.5143,144.8989,54.643,98.0188))
+ggplot(dat,aes(x=reorder(variable,-significance),y=significance,fill=variable))+geom_bar(stat='identity') +
+  coord_flip()+ggtitle("Random Forest: Variable importance")+xlab("variable")+guides(fill=FALSE)
+```
+<br><br>However, the other variables' importance have reduced considerably.
+
+
+Here too, the model classifies fraud faster than it classifies genuine transactions. In the below graph, the green line is the error rate for genuine transactions, red for fraud and black for overall.
+
+<img src="C:\Users\v7184\Documents\R-wd\rferror.png">
+
+
+##Model Metrics
+
+Now that we have built these models, it is time to check if they are any good.
+
+**NOTE:** There exist other metrics that measure the efficiency of the models more rigorously; they have not been elaborated for the sake of simplicity.
+
+###The Error Matrix
+
+The error matrix is a specific table layout that allows visualization of the performance of an algorithm/ model. It gives at a glance, how many instances of the data were classified correctly and were misclassified. It is also known by another rather unfortunate name: **the confusion matrix**.
+
+A typical error matrix is given below (<a href="https://www.analyticsvidhya.com/blog/2016/02/7-important-model-evaluation-error-metrics/">Source</a>):
+
+<img src="C:\Users\v7184\Documents\R-wd\conf.png">
+
+The above image basically tells us that:
+
++ _a_ instances that the model predicted to be positive ("Genuine" for our case) were actually positive.(**Prediction done right**)
++ _d_ instances that the model predicted to be negative ("Fraud" for our case) were actually negative.(**Prediction done right**)
++ _b_ instances that the model predicted to be positive ("Genuine" for our case) were actually negative.(**Prediction done wrong**)
++ _c_ instances that the model predicted to be negative ("Fraud" for our case) were actually positive.(**Prediction done wrong**)
+
+So scenario _b_ is the *false-positives* and scenario _c_ is the *false-negatives* (or *missouts*, as we call them). 
+
+<blockquote style="background-color: #faebbc">
+A good model has maximum possible _a_ & _d_, with least possible _b_ & _c_.
+</blockquote>
+
+Any model that classifies the outcome into one of two states can be evaluated by its error matrix. 
+
+
++ **Positive Predicted Value**: If a transaction is classified as genuine, what is the probability that the transaction is actually genuine? (**The higher the better**)
++ **Negative Predicted Value**: If a transaction is classified as fraudulent, what is the probability that the transaction is actually fraudulent? (**The higher the better**)
++ **Sensitivity**: The proportion of genuine transactions that are correctly identified as such (**The higher the better**)
++ **Specificity**: The proportion of fraudulent transactions that are correctly identified as such (**The higher the better**)
++ **Accuracy**: The overall performance of the model
+
+<blockquote style="background-color: #faebbc">
+For the case of domestic ATM misuse, the challenge is very high sensitivity, which results in genuine transactions classified as fraud.
+Given that there is considerable similarity between genuine & fraudulent transactions, a high sensitivity will mean higher false-positives and vice-versa.
+</blockquote>
+
+###Measuring Individual Model Performance
+
+The below heatmap shows the scores for each of the six logistic regression models, decision-tree and random forest (in that order).
+
+The bluer a cell, the higher that score for the model (interactive heatmap: move mouse pointer over cells to have a look at values).
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, plotly=TRUE,cache=FALSE}
+d=read.csv("metrics.csv",header=T)
+d3heatmap(d[,-1],scale="column",dendrogram = "none",color="Blues")
+```
+
+It is clear that the random forest model has the best performance.
+
+Below is the error matrix for test data for the random forest model.
+
+<img src="C:\Users\v7184\Documents\R-wd\rf-conf.png">
+
+##Caveats
+
+This is probably the most important section in this document.
+
+Applying statistical models to mitigate fraud has several advantages:
+
+* If built right, the models can 'learn' new patterns; this removes the need to create new rules to address fraud trends.
+* Models can compensate for the randomness in the data.
+
+And many more...
+
+But there are several points to note while adopting statistical modeling to solve any problem.
+
+1. **No Panacea**: Firstly, and most importantly, statistical models are not cure-all solutions for all kinds of problems. Each model is built to solve a specific variation of a problem. For example, none of the above models can be applied to POS transactions or CNP transactions to detect fraud. This is because the data has been trained on a very specific set of variables.
+
+2. **Data Preparation**: To build a model, the data has to be cleaned and prepared. Even for this analysis, calculation and preparation of data in the format elaborated above proved to be the most time-consuming part.
+
+3. **Fine-tuning**: A model, once built, needs to be calibrated regularly to ensure optimum performance. This is because, a model has numerous controls and thresholds that have been set at the time of creation with the metrics in mind. If and when the metrics fluctuate, the thresholds and even variable addition/deletion need to be considered.
+
+4. **Complexity**: More complex models perform better. For example, the random forest model is much more complex than the logistic regression model.<br> 
+The problem arises with the run-time: the random forest model also has the longest runtime. This trade-off between speed of execution and complexity of model has to be handled carefully, without losing track of accuracy.
+
+5. **Domain Knowledge**: The results of the models will have to be seen with knowledge of the domain. 
+  + For example, even if the models say that prior usage at a terminal is not very important in explaining the variance, it is common knowledge that this is a hygiene-check to reduce false-positives.
+  + Similarly, models cannot intuitively accommodate real-world changes like ATM withdrawal caps. In this situation, <code>avg1</code> will no longer be the most important variable.
+
+6. **System Integration**: Building a new statistical model into the existing infrastructure in a way to be easily calibrated is a major challenge.
+
+7. **GIGO - Output depends on input**: Finally, it must be noted that the models that have been built so far on the data collected and cleaned for this analysis; the accuracy will most definitely differ when applied to similarly cleaned set of new data points. So the more datapoints for training, the better the model.
+
+##Further Scope
+
+While anything above 95% accuracy is more than sufficient for a binary classifier, it is possible to increase it even further by training the model to handle more important variables. 
+
+The analysis done so far has not considered the <code>velocity</code> of transactions. 
+
+The analysis also considers only the prior usage at terminal level and not at amount level.
+
+System-level variables like fallback identifiers (for POS), entry modes etc., can be included.
+
+Also, geographic data like city name, country name etc may be added as variables to build models.
+
+
+
+<hr size="10" noshade>
+<span style="color:grey; font-size: 9pt"><i> This document was created using RStudio, an IDE for the R language. Interactive graphs were created using the d3.js library. Work on this document started on 02-Nov-2016.</span>
+
